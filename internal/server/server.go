@@ -50,7 +50,19 @@ func NewServer(config Config) (*Server, error) {
 	txManager := NewTransactionManager(db.Pool)
 	syncSvc := NewSyncService(repository, cryptoSvc)
 	
-	service := NewService(repository, authService, cryptoSvc, syncSvc, txManager)
+	// Создаем доменные сервисы
+	authDomainSvc := NewAuthDomainService(repository, authService)
+	secretsDomainSvc := NewSecretsDomainService(repository, cryptoSvc, txManager, syncSvc)
+	syncDomainSvc := NewSyncDomainService(syncSvc)
+	
+	// Группируем доменные сервисы
+	domains := DomainServices{
+		Auth:    authDomainSvc,
+		Secrets: secretsDomainSvc,
+		Sync:    syncDomainSvc,
+	}
+	
+	service := NewService(domains)
 	handlers := NewHandlers(service, validationSvc, responseHandler)
 
 	// Создаем роутер

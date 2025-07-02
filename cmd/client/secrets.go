@@ -7,11 +7,9 @@ import (
 	"io/ioutil"
 	"os"
 	"strconv"
-	"syscall"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
-	"golang.org/x/term"
 
 	"github.com/uryumtsevaa/gophkeeper/internal/models"
 )
@@ -20,26 +18,10 @@ var secretsCmd = &cobra.Command{
 	Use:   "secrets",
 	Short: "Manage secrets",
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		// Загружаем токен
-		token, err := loadToken()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Not authenticated. Please login first.\n")
+		if err := setupAuthentication(); err != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
 			os.Exit(1)
 		}
-		clientInstance.SetToken(token)
-
-		// Устанавливаем мастер-пароль
-		if clientConfig.MasterPassword == "" {
-			fmt.Print("Master password: ")
-			passwordBytes, err := term.ReadPassword(int(syscall.Stdin))
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error reading master password: %v\n", err)
-				os.Exit(1)
-			}
-			clientConfig.MasterPassword = string(passwordBytes)
-			fmt.Println()
-		}
-		clientInstance.SetMasterPassword(clientConfig.MasterPassword)
 	},
 }
 
@@ -96,14 +78,11 @@ var addCredentialsCmd = &cobra.Command{
 			fmt.Scanln(&username)
 		}
 
-		fmt.Print("Password: ")
-		passwordBytes, err := term.ReadPassword(int(syscall.Stdin))
+		password, err := readPassword("Password: ")
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error reading password: %v\n", err)
+			fmt.Fprintf(os.Stderr, "%v\n", err)
 			return
 		}
-		password := string(passwordBytes)
-		fmt.Println()
 
 		credentials := models.Credentials{
 			Name:     name,
@@ -265,14 +244,11 @@ var addCardCmd = &cobra.Command{
 			return
 		}
 
-		fmt.Print("CVV: ")
-		cvvBytes, err := term.ReadPassword(int(syscall.Stdin))
+		cvv, err := readPassword("CVV: ")
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error reading CVV: %v\n", err)
+			fmt.Fprintf(os.Stderr, "%v\n", err)
 			return
 		}
-		cvv := string(cvvBytes)
-		fmt.Println()
 
 		cardData := models.CardData{
 			Name:        name,

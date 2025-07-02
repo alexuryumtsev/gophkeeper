@@ -14,22 +14,10 @@ var syncCmd = &cobra.Command{
 	Use:   "sync",
 	Short: "Synchronize secrets with server",
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		// Загружаем токен
-		token, err := loadToken()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Not authenticated. Please login first.\n")
+		if err := setupAuthentication(); err != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
 			os.Exit(1)
 		}
-		clientInstance.SetToken(token)
-
-		// Устанавливаем мастер-пароль
-		if clientConfig.MasterPassword == "" {
-			fmt.Print("Master password: ")
-			var password string
-			fmt.Scanln(&password)
-			clientConfig.MasterPassword = password
-		}
-		clientInstance.SetMasterPassword(clientConfig.MasterPassword)
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		ctx := context.Background()

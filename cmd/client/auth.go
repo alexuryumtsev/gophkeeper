@@ -33,14 +33,11 @@ var registerCmd = &cobra.Command{
 			fmt.Scanln(&email)
 		}
 
-		fmt.Print("Password: ")
-		passwordBytes, err := term.ReadPassword(int(syscall.Stdin))
+		password, err := readPassword("Password: ")
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error reading password: %v\n", err)
+			fmt.Fprintf(os.Stderr, "%v\n", err)
 			return
 		}
-		password := string(passwordBytes)
-		fmt.Println()
 
 		ctx := context.Background()
 		response, err := clientInstance.Register(ctx, username, email, password)
@@ -69,14 +66,11 @@ var loginCmd = &cobra.Command{
 			fmt.Scanln(&username)
 		}
 
-		fmt.Print("Password: ")
-		passwordBytes, err := term.ReadPassword(int(syscall.Stdin))
+		password, err := readPassword("Password: ")
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error reading password: %v\n", err)
+			fmt.Fprintf(os.Stderr, "%v\n", err)
 			return
 		}
-		password := string(passwordBytes)
-		fmt.Println()
 
 		ctx := context.Background()
 		response, err := clientInstance.Login(ctx, username, password)
@@ -115,6 +109,17 @@ func init() {
 	authCmd.AddCommand(registerCmd, loginCmd, logoutCmd)
 }
 
+// readPassword читает пароль из stdin, скрывая ввод
+func readPassword(prompt string) (string, error) {
+	fmt.Print(prompt)
+	passwordBytes, err := term.ReadPassword(int(syscall.Stdin))
+	if err != nil {
+		return "", fmt.Errorf("error reading password: %v", err)
+	}
+	fmt.Println()
+	return string(passwordBytes), nil
+}
+
 // saveToken сохраняет токен в файл
 func saveToken(token string) error {
 	// Создаем директорию если она не существует
@@ -140,4 +145,26 @@ func loadToken() (string, error) {
 func removeToken() error {
 	tokenPath := filepath.Join(clientConfig.ConfigDir, "token")
 	return os.Remove(tokenPath)
+}
+
+// setupAuthentication выполняет общую логику аутентификации
+func setupAuthentication() error {
+	// Загружаем токен
+	token, err := loadToken()
+	if err != nil {
+		return fmt.Errorf("not authenticated. Please login first")
+	}
+	clientInstance.SetToken(token)
+
+	// Устанавливаем мастер-пароль
+	if clientConfig.MasterPassword == "" {
+		masterPassword, err := readPassword("Master password: ")
+		if err != nil {
+			return err
+		}
+		clientConfig.MasterPassword = masterPassword
+	}
+	clientInstance.SetMasterPassword(clientConfig.MasterPassword)
+	
+	return nil
 }

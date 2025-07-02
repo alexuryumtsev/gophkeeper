@@ -59,6 +59,12 @@ func (c Config) DSN() string {
 		c.Host, c.Port, c.User, c.Password, c.DBName, c.SSLMode)
 }
 
+// MigrateURL возвращает URL для golang-migrate
+func (c Config) MigrateURL() string {
+	return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s",
+		c.User, c.Password, c.Host, c.Port, c.DBName, c.SSLMode)
+}
+
 // String возвращает строковое представление конфигурации (с замаскированным паролем)
 func (c Config) String() string {
 	password := c.Password
@@ -96,13 +102,9 @@ func (db *Database) Close() {
 
 // RunMigrations выполняет миграции базы данных
 func (db *Database) RunMigrations(migrationsPath string, config Config) error {
-	// Формируем правильный URL для golang-migrate
-	migrateURL := fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s",
-		config.User, config.Password, config.Host, config.Port, config.DBName, config.SSLMode)
-
 	m, err := migrate.New(
 		fmt.Sprintf("file://%s", migrationsPath),
-		migrateURL,
+		config.MigrateURL(),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create migrate instance: %w", err)

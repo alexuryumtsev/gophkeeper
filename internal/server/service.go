@@ -23,30 +23,54 @@ type ServiceInterface interface {
 	SyncSecrets(ctx context.Context, userID uuid.UUID, req *models.SyncRequest, masterPassword string) (*models.SyncResponse, error)
 }
 
-// Service сервис для бизнес-логики
-type Service struct {
-	repo         Repository
-	auth         AuthServiceInterface
-	cryptoSvc    CryptoService
-	syncSvc      SyncService
-	txManager    TransactionManager
+// DataDependencies группирует зависимости для работы с данными
+type DataDependencies struct {
+	Repository  Repository
+	TxManager   TransactionManager
 }
 
-// NewService создает новый сервис
-func NewService(repo Repository, auth AuthServiceInterface, cryptoSvc CryptoService, syncSvc SyncService, txManager TransactionManager) *Service {
-	return &Service{
-		repo:      repo,
-		auth:      auth,
-		cryptoSvc: cryptoSvc,
-		syncSvc:   syncSvc,
-		txManager: txManager,
+// SecurityDependencies группирует зависимости для безопасности
+type SecurityDependencies struct {
+	Auth      AuthServiceInterface
+	CryptoSvc CryptoService
+}
+
+// BusinessDependencies группирует зависимости для бизнес-логики
+type BusinessDependencies struct {
+	SyncSvc SyncService
+}
+
+// ServiceDependencies группирует все зависимости сервиса
+type ServiceDependencies struct {
+	Data     DataDependencies
+	Security SecurityDependencies
+	Business BusinessDependencies
+}
+
+// AuthDomainService интерфейс для доменного сервиса аутентификации
+type AuthDomainService interface {
+	RegisterUser(ctx context.Context, req *models.RegisterRequest) (*models.LoginResponse, error)
+	LoginUser(ctx context.Context, req *models.LoginRequest) (*models.LoginResponse, error)
+}
+
+// authDomainService реализация доменного сервиса аутентификации
+type authDomainService struct {
+	repo Repository
+	auth AuthServiceInterface
+}
+
+// NewAuthDomainService создает новый доменный сервис аутентификации
+func NewAuthDomainService(repo Repository, auth AuthServiceInterface) AuthDomainService {
+	return &authDomainService{
+		repo: repo,
+		auth: auth,
 	}
 }
 
 // RegisterUser регистрирует нового пользователя
-func (s *Service) RegisterUser(ctx context.Context, req *models.RegisterRequest) (*models.LoginResponse, error) {
+func (a *authDomainService) RegisterUser(ctx context.Context, req *models.RegisterRequest) (*models.LoginResponse, error) {
 	// Проверяем, не существует ли пользователь
-	existingUser, err := s.repo.GetUserByUsername(ctx, req.Username)
+	existingUser, err := a.repo.GetUserByUsername(ctx, req.Username)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check existing user: %w", err)
 	}
@@ -64,12 +88,12 @@ func (s *Service) RegisterUser(ctx context.Context, req *models.RegisterRequest)
 		UpdatedAt:    time.Now(),
 	}
 
-	if err := s.repo.CreateUser(ctx, user); err != nil {
+	if err := a.repo.CreateUser(ctx, user); err != nil {
 		return nil, fmt.Errorf("failed to create user: %w", err)
 	}
 
 	// Генерируем токен
-	token, err := s.auth.GenerateToken(user.ID, user.Username)
+	token, err := a.auth.GenerateToken(user.ID, user.Username)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate token: %w", err)
 	}
@@ -85,9 +109,9 @@ func (s *Service) RegisterUser(ctx context.Context, req *models.RegisterRequest)
 }
 
 // LoginUser авторизует пользователя
-func (s *Service) LoginUser(ctx context.Context, req *models.LoginRequest) (*models.LoginResponse, error) {
+func (a *authDomainService) LoginUser(ctx context.Context, req *models.LoginRequest) (*models.LoginResponse, error) {
 	// Находим пользователя
-	user, err := s.repo.GetUserByUsername(ctx, req.Username)
+	user, err := a.repo.GetUserByUsername(ctx, req.Username)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user: %w", err)
 	}
@@ -101,7 +125,7 @@ func (s *Service) LoginUser(ctx context.Context, req *models.LoginRequest) (*mod
 	}
 
 	// Генерируем токен
-	token, err := s.auth.GenerateToken(user.ID, user.Username)
+	token, err := a.auth.GenerateToken(user.ID, user.Username)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate token: %w", err)
 	}
@@ -116,8 +140,35 @@ func (s *Service) LoginUser(ctx context.Context, req *models.LoginRequest) (*mod
 	}, nil
 }
 
+// SecretsDomainService интерфейс для доменного сервиса секретов
+type SecretsDomainService interface {
+	CreateSecret(ctx context.Context, userID uuid.UUID, req *models.SecretRequest, masterPassword string) (*models.SecretResponse, error)
+	GetSecrets(ctx context.Context, userID uuid.UUID, masterPassword string) (*models.SecretsListResponse, error)
+	GetSecret(ctx context.Context, secretID, userID uuid.UUID, masterPassword string) (*models.SecretResponse, error)
+	UpdateSecret(ctx context.Context, secretID, userID uuid.UUID, req *models.SecretRequest, masterPassword string) (*models.SecretResponse, error)
+	DeleteSecret(ctx context.Context, secretID, userID uuid.UUID) error
+}
+
+// secretsDomainService реализация доменного сервиса секретов
+type secretsDomainService struct {
+	repo      Repository
+	cryptoSvc CryptoService
+	txManager TransactionManager
+	syncSvc   SyncService
+}
+
+// NewSecretsDomainService создает новый доменный сервис секретов
+func NewSecretsDomainService(repo Repository, cryptoSvc CryptoService, txManager TransactionManager, syncSvc SyncService) SecretsDomainService {
+	return &secretsDomainService{
+		repo:      repo,
+		cryptoSvc: cryptoSvc,
+		txManager: txManager,
+		syncSvc:   syncSvc,
+	}
+}
+
 // CreateSecret создает новый секрет
-func (s *Service) CreateSecret(ctx context.Context, userID uuid.UUID, req *models.SecretRequest, masterPassword string) (*models.SecretResponse, error) {
+func (s *secretsDomainService) CreateSecret(ctx context.Context, userID uuid.UUID, req *models.SecretRequest, masterPassword string) (*models.SecretResponse, error) {
 	// Шифруем данные
 	encryptedData, err := s.cryptoSvc.EncryptSecretData(req.Data, masterPassword)
 	if err != nil {
@@ -145,7 +196,6 @@ func (s *Service) CreateSecret(ctx context.Context, userID uuid.UUID, req *model
 
 		// Создаем операцию синхронизации
 		if err := s.syncSvc.CreateSyncOperation(txCtx, userID, secret.ID, models.OperationCreate); err != nil {
-			// Логируем ошибку, но не прерываем операцию
 			fmt.Printf("Warning: failed to create sync operation: %v\n", err)
 		}
 
@@ -156,11 +206,11 @@ func (s *Service) CreateSecret(ctx context.Context, userID uuid.UUID, req *model
 		return nil, err
 	}
 
-	return s.buildSecretResponse(secret, req.Data), nil
+	return buildSecretResponse(secret, req.Data), nil
 }
 
 // GetSecrets получает все секреты пользователя
-func (s *Service) GetSecrets(ctx context.Context, userID uuid.UUID, masterPassword string) (*models.SecretsListResponse, error) {
+func (s *secretsDomainService) GetSecrets(ctx context.Context, userID uuid.UUID, masterPassword string) (*models.SecretsListResponse, error) {
 	secrets, err := s.repo.GetSecretsByUserID(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get secrets: %w", err)
@@ -175,7 +225,7 @@ func (s *Service) GetSecrets(ctx context.Context, userID uuid.UUID, masterPasswo
 			continue
 		}
 
-		responses = append(responses, *s.buildSecretResponse(secret, decryptedData))
+		responses = append(responses, *buildSecretResponse(secret, decryptedData))
 	}
 
 	return &models.SecretsListResponse{
@@ -185,7 +235,7 @@ func (s *Service) GetSecrets(ctx context.Context, userID uuid.UUID, masterPasswo
 }
 
 // GetSecret получает конкретный секрет
-func (s *Service) GetSecret(ctx context.Context, secretID, userID uuid.UUID, masterPassword string) (*models.SecretResponse, error) {
+func (s *secretsDomainService) GetSecret(ctx context.Context, secretID, userID uuid.UUID, masterPassword string) (*models.SecretResponse, error) {
 	secret, err := s.repo.GetSecretByID(ctx, secretID, userID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get secret: %w", err)
@@ -200,11 +250,11 @@ func (s *Service) GetSecret(ctx context.Context, secretID, userID uuid.UUID, mas
 		return nil, fmt.Errorf("failed to decrypt secret: %w", err)
 	}
 
-	return s.buildSecretResponse(secret, decryptedData), nil
+	return buildSecretResponse(secret, decryptedData), nil
 }
 
 // UpdateSecret обновляет секрет
-func (s *Service) UpdateSecret(ctx context.Context, secretID, userID uuid.UUID, req *models.SecretRequest, masterPassword string) (*models.SecretResponse, error) {
+func (s *secretsDomainService) UpdateSecret(ctx context.Context, secretID, userID uuid.UUID, req *models.SecretRequest, masterPassword string) (*models.SecretResponse, error) {
 	// Проверяем, что секрет существует и принадлежит пользователю
 	existing, err := s.repo.GetSecretByID(ctx, secretID, userID)
 	if err != nil {
@@ -245,11 +295,11 @@ func (s *Service) UpdateSecret(ctx context.Context, secretID, userID uuid.UUID, 
 		return nil, err
 	}
 
-	return s.buildSecretResponse(existing, req.Data), nil
+	return buildSecretResponse(existing, req.Data), nil
 }
 
 // DeleteSecret удаляет секрет
-func (s *Service) DeleteSecret(ctx context.Context, secretID, userID uuid.UUID) error {
+func (s *secretsDomainService) DeleteSecret(ctx context.Context, secretID, userID uuid.UUID) error {
 	// Используем транзакцию для удаления секрета и создания операции синхронизации
 	return s.txManager.WithTransaction(ctx, func(txCtx context.Context) error {
 		if err := s.repo.DeleteSecret(txCtx, secretID, userID); err != nil {
@@ -265,13 +315,8 @@ func (s *Service) DeleteSecret(ctx context.Context, secretID, userID uuid.UUID) 
 	})
 }
 
-// SyncSecrets синхронизирует секреты
-func (s *Service) SyncSecrets(ctx context.Context, userID uuid.UUID, req *models.SyncRequest, masterPassword string) (*models.SyncResponse, error) {
-	return s.syncSvc.ProcessSyncRequest(ctx, userID, req, masterPassword)
-}
-
 // buildSecretResponse создает ответ с секретом
-func (s *Service) buildSecretResponse(secret *models.Secret, data interface{}) *models.SecretResponse {
+func buildSecretResponse(secret *models.Secret, data any) *models.SecretResponse {
 	return &models.SecretResponse{
 		ID:        secret.ID,
 		Type:      secret.Type,
@@ -283,3 +328,85 @@ func (s *Service) buildSecretResponse(secret *models.Secret, data interface{}) *
 		SyncHash:  secret.SyncHash,
 	}
 }
+
+// SyncDomainService интерфейс для доменного сервиса синхронизации
+type SyncDomainService interface {
+	SyncSecrets(ctx context.Context, userID uuid.UUID, req *models.SyncRequest, masterPassword string) (*models.SyncResponse, error)
+}
+
+// syncDomainService реализация доменного сервиса синхронизации
+type syncDomainService struct {
+	syncSvc SyncService
+}
+
+// NewSyncDomainService создает новый доменный сервис синхронизации
+func NewSyncDomainService(syncSvc SyncService) SyncDomainService {
+	return &syncDomainService{
+		syncSvc: syncSvc,
+	}
+}
+
+// SyncSecrets синхронизирует секреты
+func (s *syncDomainService) SyncSecrets(ctx context.Context, userID uuid.UUID, req *models.SyncRequest, masterPassword string) (*models.SyncResponse, error) {
+	return s.syncSvc.ProcessSyncRequest(ctx, userID, req, masterPassword)
+}
+
+// DomainServices группирует доменные сервисы
+type DomainServices struct {
+	Auth    AuthDomainService
+	Secrets SecretsDomainService
+	Sync    SyncDomainService
+}
+
+// Service сервис для бизнес-логики
+type Service struct {
+	domains DomainServices
+}
+
+// NewService создает новый сервис
+func NewService(domains DomainServices) *Service {
+	return &Service{
+		domains: domains,
+	}
+}
+
+// RegisterUser регистрирует нового пользователя
+func (s *Service) RegisterUser(ctx context.Context, req *models.RegisterRequest) (*models.LoginResponse, error) {
+	return s.domains.Auth.RegisterUser(ctx, req)
+}
+
+// LoginUser авторизует пользователя
+func (s *Service) LoginUser(ctx context.Context, req *models.LoginRequest) (*models.LoginResponse, error) {
+	return s.domains.Auth.LoginUser(ctx, req)
+}
+
+// CreateSecret создает новый секрет
+func (s *Service) CreateSecret(ctx context.Context, userID uuid.UUID, req *models.SecretRequest, masterPassword string) (*models.SecretResponse, error) {
+	return s.domains.Secrets.CreateSecret(ctx, userID, req, masterPassword)
+}
+
+// GetSecrets получает все секреты пользователя
+func (s *Service) GetSecrets(ctx context.Context, userID uuid.UUID, masterPassword string) (*models.SecretsListResponse, error) {
+	return s.domains.Secrets.GetSecrets(ctx, userID, masterPassword)
+}
+
+// GetSecret получает конкретный секрет
+func (s *Service) GetSecret(ctx context.Context, secretID, userID uuid.UUID, masterPassword string) (*models.SecretResponse, error) {
+	return s.domains.Secrets.GetSecret(ctx, secretID, userID, masterPassword)
+}
+
+// UpdateSecret обновляет секрет
+func (s *Service) UpdateSecret(ctx context.Context, secretID, userID uuid.UUID, req *models.SecretRequest, masterPassword string) (*models.SecretResponse, error) {
+	return s.domains.Secrets.UpdateSecret(ctx, secretID, userID, req, masterPassword)
+}
+
+// DeleteSecret удаляет секрет
+func (s *Service) DeleteSecret(ctx context.Context, secretID, userID uuid.UUID) error {
+	return s.domains.Secrets.DeleteSecret(ctx, secretID, userID)
+}
+
+// SyncSecrets синхронизирует секреты
+func (s *Service) SyncSecrets(ctx context.Context, userID uuid.UUID, req *models.SyncRequest, masterPassword string) (*models.SyncResponse, error) {
+	return s.domains.Sync.SyncSecrets(ctx, userID, req, masterPassword)
+}
+

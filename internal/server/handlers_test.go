@@ -415,7 +415,6 @@ func TestHandlers_CreateSecret(t *testing.T) {
 
 		masterPasswordError := fmt.Errorf("master password required")
 		mockValidation.On("ValidateUserID", mock.Anything).Return(testUserID, nil)
-		mockValidation.On("BindJSON", mock.Anything, mock.AnythingOfType("*models.SecretRequest")).Return(nil, testSecretReq)
 		mockValidation.On("ValidateMasterPassword", mock.Anything).Return("", masterPasswordError)
 
 		handlers := NewHandlers(mockService, mockValidation, mockResponse)

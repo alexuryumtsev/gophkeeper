@@ -127,7 +127,16 @@ func TestService_RegisterUser(t *testing.T) {
 	cryptoSvc := NewCryptoService(encryptor)
 	syncSvc := NewSyncService(repo, cryptoSvc)
 	txManager := NewMockTransactionManager()
-	service := NewService(repo, auth, cryptoSvc, syncSvc, txManager)
+	authDomainSvc := NewAuthDomainService(repo, auth)
+	secretsDomainSvc := NewSecretsDomainService(repo, cryptoSvc, txManager, syncSvc)
+	syncDomainSvc := NewSyncDomainService(syncSvc)
+	
+	domains := DomainServices{
+		Auth:    authDomainSvc,
+		Secrets: secretsDomainSvc,
+		Sync:    syncDomainSvc,
+	}
+	service := NewService(domains)
 
 	req := &models.RegisterRequest{
 		Username: "testuser",
@@ -176,7 +185,16 @@ func TestService_LoginUser(t *testing.T) {
 	cryptoSvc := NewCryptoService(encryptor)
 	syncSvc := NewSyncService(repo, cryptoSvc)
 	txManager := NewMockTransactionManager()
-	service := NewService(repo, auth, cryptoSvc, syncSvc, txManager)
+	authDomainSvc := NewAuthDomainService(repo, auth)
+	secretsDomainSvc := NewSecretsDomainService(repo, cryptoSvc, txManager, syncSvc)
+	syncDomainSvc := NewSyncDomainService(syncSvc)
+	
+	domains := DomainServices{
+		Auth:    authDomainSvc,
+		Secrets: secretsDomainSvc,
+		Sync:    syncDomainSvc,
+	}
+	service := NewService(domains)
 
 	// Сначала регистрируем пользователя
 	registerReq := &models.RegisterRequest{
@@ -229,7 +247,16 @@ func TestService_CreateSecret(t *testing.T) {
 	cryptoSvc := NewCryptoService(encryptor)
 	syncSvc := NewSyncService(repo, cryptoSvc)
 	txManager := NewMockTransactionManager()
-	service := NewService(repo, auth, cryptoSvc, syncSvc, txManager)
+	authDomainSvc := NewAuthDomainService(repo, auth)
+	secretsDomainSvc := NewSecretsDomainService(repo, cryptoSvc, txManager, syncSvc)
+	syncDomainSvc := NewSyncDomainService(syncSvc)
+	
+	domains := DomainServices{
+		Auth:    authDomainSvc,
+		Secrets: secretsDomainSvc,
+		Sync:    syncDomainSvc,
+	}
+	service := NewService(domains)
 
 	userID := uuid.New()
 	masterPassword := "master-password"
@@ -285,7 +312,16 @@ func TestService_GetSecrets(t *testing.T) {
 	cryptoSvc := NewCryptoService(encryptor)
 	syncSvc := NewSyncService(repo, cryptoSvc)
 	txManager := NewMockTransactionManager()
-	service := NewService(repo, auth, cryptoSvc, syncSvc, txManager)
+	authDomainSvc := NewAuthDomainService(repo, auth)
+	secretsDomainSvc := NewSecretsDomainService(repo, cryptoSvc, txManager, syncSvc)
+	syncDomainSvc := NewSyncDomainService(syncSvc)
+	
+	domains := DomainServices{
+		Auth:    authDomainSvc,
+		Secrets: secretsDomainSvc,
+		Sync:    syncDomainSvc,
+	}
+	service := NewService(domains)
 
 	userID := uuid.New()
 	masterPassword := "master-password"

@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 
 	"github.com/uryumtsevaa/gophkeeper/internal/models"
 )
@@ -15,6 +16,73 @@ type Handlers struct {
 	responseHandler  ResponseHandler
 }
 
+// withUserValidation middleware для валидации пользователя
+func (h *Handlers) withUserValidation(handler func(c *gin.Context, uid uuid.UUID)) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		uid, err := h.validationSvc.ValidateUserID(c)
+		if err != nil {
+			return
+		}
+		handler(c, uid)
+	}
+}
+
+// withUserAndMasterPassword middleware для валидации пользователя и мастер-пароля
+func (h *Handlers) withUserAndMasterPassword(handler func(c *gin.Context, uid uuid.UUID, masterPassword string)) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		uid, err := h.validationSvc.ValidateUserID(c)
+		if err != nil {
+			return
+		}
+		
+		masterPassword, err := h.validationSvc.ValidateMasterPassword(c)
+		if err != nil {
+			return
+		}
+		
+		handler(c, uid, masterPassword)
+	}
+}
+
+// withUserSecretAndMasterPassword middleware для валидации пользователя, секрета и мастер-пароля
+func (h *Handlers) withUserSecretAndMasterPassword(handler func(c *gin.Context, uid, sid uuid.UUID, masterPassword string)) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		uid, err := h.validationSvc.ValidateUserID(c)
+		if err != nil {
+			return
+		}
+		
+		sid, err := h.validationSvc.ValidateSecretID(c)
+		if err != nil {
+			return
+		}
+		
+		masterPassword, err := h.validationSvc.ValidateMasterPassword(c)
+		if err != nil {
+			return
+		}
+		
+		handler(c, uid, sid, masterPassword)
+	}
+}
+
+// withUserAndSecret middleware для валидации пользователя и секрета
+func (h *Handlers) withUserAndSecret(handler func(c *gin.Context, uid, sid uuid.UUID)) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		uid, err := h.validationSvc.ValidateUserID(c)
+		if err != nil {
+			return
+		}
+		
+		sid, err := h.validationSvc.ValidateSecretID(c)
+		if err != nil {
+			return
+		}
+		
+		handler(c, uid, sid)
+	}
+}
+
 // NewHandlers создает новые обработчики
 func NewHandlers(service ServiceInterface, validationSvc ValidationService, responseHandler ResponseHandler) *Handlers {
 	return &Handlers{
@@ -22,6 +90,23 @@ func NewHandlers(service ServiceInterface, validationSvc ValidationService, resp
 		validationSvc:   validationSvc,
 		responseHandler: responseHandler,
 	}
+}
+
+// handleRequest helper для обработки запросов с JSON
+func (h *Handlers) handleRequest(c *gin.Context, req any, handler func() (any, error), statusCode int) {
+	if req != nil {
+		if err := h.validationSvc.BindJSON(c, req); err != nil {
+			return
+		}
+	}
+
+	response, err := handler()
+	if err != nil {
+		h.responseHandler.HandleError(c, err)
+		return
+	}
+
+	h.responseHandler.HandleSuccess(c, statusCode, response)
 }
 
 // Register регистрация пользователя
@@ -38,17 +123,9 @@ func NewHandlers(service ServiceInterface, validationSvc ValidationService, resp
 // @Router /auth/register [post]
 func (h *Handlers) Register(c *gin.Context) {
 	var req models.RegisterRequest
-	if err := h.validationSvc.BindJSON(c, &req); err != nil {
-		return
-	}
-
-	response, err := h.service.RegisterUser(c.Request.Context(), &req)
-	if err != nil {
-		h.responseHandler.HandleError(c, err)
-		return
-	}
-
-	h.responseHandler.HandleSuccess(c, http.StatusCreated, response)
+	h.handleRequest(c, &req, func() (any, error) {
+		return h.service.RegisterUser(c.Request.Context(), &req)
+	}, http.StatusCreated)
 }
 
 // Login авторизация пользователя
@@ -65,17 +142,9 @@ func (h *Handlers) Register(c *gin.Context) {
 // @Router /auth/login [post]
 func (h *Handlers) Login(c *gin.Context) {
 	var req models.LoginRequest
-	if err := h.validationSvc.BindJSON(c, &req); err != nil {
-		return
-	}
-
-	response, err := h.service.LoginUser(c.Request.Context(), &req)
-	if err != nil {
-		h.responseHandler.HandleError(c, err)
-		return
-	}
-
-	h.responseHandler.HandleSuccess(c, http.StatusOK, response)
+	h.handleRequest(c, &req, func() (any, error) {
+		return h.service.LoginUser(c.Request.Context(), &req)
+	}, http.StatusOK)
 }
 
 // CreateSecret создание секрета
@@ -84,7 +153,7 @@ func (h *Handlers) Login(c *gin.Context) {
 // @Tags secrets
 // @Accept json
 // @Produce json
-// @Param Authorization header string true "Bearer токен" default(Bearer <token>)
+// @Param Authorization header string true "Bearer token" default(Bearer <token>)
 // @Param X-Master-Password header string true "Мастер-пароль для шифрования"
 // @Param request body models.SecretRequest true "Данные секрета"
 // @Success 201 {object} models.SecretResponse "Секрет создан"
@@ -94,28 +163,14 @@ func (h *Handlers) Login(c *gin.Context) {
 // @Security BearerAuth
 // @Router /secrets [post]
 func (h *Handlers) CreateSecret(c *gin.Context) {
-	uid, err := h.validationSvc.ValidateUserID(c)
-	if err != nil {
-		return
-	}
+	h.withUserAndMasterPassword(h.createSecretHandler)(c)
+}
 
+func (h *Handlers) createSecretHandler(c *gin.Context, uid uuid.UUID, masterPassword string) {
 	var req models.SecretRequest
-	if err := h.validationSvc.BindJSON(c, &req); err != nil {
-		return
-	}
-
-	masterPassword, err := h.validationSvc.ValidateMasterPassword(c)
-	if err != nil {
-		return
-	}
-
-	response, err := h.service.CreateSecret(c.Request.Context(), uid, &req, masterPassword)
-	if err != nil {
-		h.responseHandler.HandleError(c, err)
-		return
-	}
-
-	h.responseHandler.HandleSuccess(c, http.StatusCreated, response)
+	h.handleRequest(c, &req, func() (any, error) {
+		return h.service.CreateSecret(c.Request.Context(), uid, &req, masterPassword)
+	}, http.StatusCreated)
 }
 
 // GetSecrets получение списка секретов
@@ -133,23 +188,13 @@ func (h *Handlers) CreateSecret(c *gin.Context) {
 // @Security BearerAuth
 // @Router /secrets [get]
 func (h *Handlers) GetSecrets(c *gin.Context) {
-	uid, err := h.validationSvc.ValidateUserID(c)
-	if err != nil {
-		return
-	}
+	h.withUserAndMasterPassword(h.getSecretsHandler)(c)
+}
 
-	masterPassword, err := h.validationSvc.ValidateMasterPassword(c)
-	if err != nil {
-		return
-	}
-
-	response, err := h.service.GetSecrets(c.Request.Context(), uid, masterPassword)
-	if err != nil {
-		h.responseHandler.HandleError(c, err)
-		return
-	}
-
-	h.responseHandler.HandleSuccess(c, http.StatusOK, response)
+func (h *Handlers) getSecretsHandler(c *gin.Context, uid uuid.UUID, masterPassword string) {
+	h.handleRequest(c, nil, func() (any, error) {
+		return h.service.GetSecrets(c.Request.Context(), uid, masterPassword)
+	}, http.StatusOK)
 }
 
 // GetSecret получение конкретного секрета
@@ -169,28 +214,13 @@ func (h *Handlers) GetSecrets(c *gin.Context) {
 // @Security BearerAuth
 // @Router /secrets/{id} [get]
 func (h *Handlers) GetSecret(c *gin.Context) {
-	uid, err := h.validationSvc.ValidateUserID(c)
-	if err != nil {
-		return
-	}
+	h.withUserSecretAndMasterPassword(h.getSecretHandler)(c)
+}
 
-	sid, err := h.validationSvc.ValidateSecretID(c)
-	if err != nil {
-		return
-	}
-
-	masterPassword, err := h.validationSvc.ValidateMasterPassword(c)
-	if err != nil {
-		return
-	}
-
-	response, err := h.service.GetSecret(c.Request.Context(), sid, uid, masterPassword)
-	if err != nil {
-		h.responseHandler.HandleError(c, err)
-		return
-	}
-
-	h.responseHandler.HandleSuccess(c, http.StatusOK, response)
+func (h *Handlers) getSecretHandler(c *gin.Context, uid, sid uuid.UUID, masterPassword string) {
+	h.handleRequest(c, nil, func() (any, error) {
+		return h.service.GetSecret(c.Request.Context(), sid, uid, masterPassword)
+	}, http.StatusOK)
 }
 
 // UpdateSecret обновление секрета
@@ -211,33 +241,14 @@ func (h *Handlers) GetSecret(c *gin.Context) {
 // @Security BearerAuth
 // @Router /secrets/{id} [put]
 func (h *Handlers) UpdateSecret(c *gin.Context) {
-	uid, err := h.validationSvc.ValidateUserID(c)
-	if err != nil {
-		return
-	}
+	h.withUserSecretAndMasterPassword(h.updateSecretHandler)(c)
+}
 
-	sid, err := h.validationSvc.ValidateSecretID(c)
-	if err != nil {
-		return
-	}
-
+func (h *Handlers) updateSecretHandler(c *gin.Context, uid, sid uuid.UUID, masterPassword string) {
 	var req models.SecretRequest
-	if err := h.validationSvc.BindJSON(c, &req); err != nil {
-		return
-	}
-
-	masterPassword, err := h.validationSvc.ValidateMasterPassword(c)
-	if err != nil {
-		return
-	}
-
-	response, err := h.service.UpdateSecret(c.Request.Context(), sid, uid, &req, masterPassword)
-	if err != nil {
-		h.responseHandler.HandleError(c, err)
-		return
-	}
-
-	h.responseHandler.HandleSuccess(c, http.StatusOK, response)
+	h.handleRequest(c, &req, func() (any, error) {
+		return h.service.UpdateSecret(c.Request.Context(), sid, uid, &req, masterPassword)
+	}, http.StatusOK)
 }
 
 // DeleteSecret удаление секрета
@@ -256,23 +267,14 @@ func (h *Handlers) UpdateSecret(c *gin.Context) {
 // @Security BearerAuth
 // @Router /secrets/{id} [delete]
 func (h *Handlers) DeleteSecret(c *gin.Context) {
-	uid, err := h.validationSvc.ValidateUserID(c)
-	if err != nil {
-		return
-	}
+	h.withUserAndSecret(h.deleteSecretHandler)(c)
+}
 
-	sid, err := h.validationSvc.ValidateSecretID(c)
-	if err != nil {
-		return
-	}
-
-	err = h.service.DeleteSecret(c.Request.Context(), sid, uid)
-	if err != nil {
-		h.responseHandler.HandleError(c, err)
-		return
-	}
-
-	h.responseHandler.HandleSuccess(c, http.StatusNoContent, nil)
+func (h *Handlers) deleteSecretHandler(c *gin.Context, uid, sid uuid.UUID) {
+	h.handleRequest(c, nil, func() (any, error) {
+		err := h.service.DeleteSecret(c.Request.Context(), sid, uid)
+		return nil, err
+	}, http.StatusNoContent)
 }
 
 // SyncSecrets синхронизация секретов
@@ -291,26 +293,12 @@ func (h *Handlers) DeleteSecret(c *gin.Context) {
 // @Security BearerAuth
 // @Router /sync [post]
 func (h *Handlers) SyncSecrets(c *gin.Context) {
-	uid, err := h.validationSvc.ValidateUserID(c)
-	if err != nil {
-		return
-	}
+	h.withUserAndMasterPassword(h.syncSecretsHandler)(c)
+}
 
+func (h *Handlers) syncSecretsHandler(c *gin.Context, uid uuid.UUID, masterPassword string) {
 	var req models.SyncRequest
-	if err := h.validationSvc.BindJSON(c, &req); err != nil {
-		return
-	}
-
-	masterPassword, err := h.validationSvc.ValidateMasterPassword(c)
-	if err != nil {
-		return
-	}
-
-	response, err := h.service.SyncSecrets(c.Request.Context(), uid, &req, masterPassword)
-	if err != nil {
-		h.responseHandler.HandleError(c, err)
-		return
-	}
-
-	h.responseHandler.HandleSuccess(c, http.StatusOK, response)
+	h.handleRequest(c, &req, func() (any, error) {
+		return h.service.SyncSecrets(c.Request.Context(), uid, &req, masterPassword)
+	}, http.StatusOK)
 }
