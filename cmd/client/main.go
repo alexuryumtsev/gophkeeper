@@ -28,18 +28,21 @@ var rootCmd = &cobra.Command{
 	Short: "GophKeeper client - secure password and data manager",
 	Long: `GophKeeper client is a command-line interface for managing
 your passwords, text data, binary files, and credit card information securely.`,
-	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		// Инициализируем клиент
-		clientInstance = client.NewClient(clientConfig.ServerURL)
+	PersistentPreRun: initializeClient,
+}
 
-		// Инициализируем локальное хранилище
-		var err error
-		localStorage, err = client.NewLocalStorage(clientConfig.ConfigDir)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to initialize local storage: %v\n", err)
-			os.Exit(1)
-		}
-	},
+// initializeClient инициализирует клиент и локальное хранилище для всех команд
+func initializeClient(cmd *cobra.Command, args []string) {
+	// Инициализируем клиент
+	clientInstance = client.NewClient(clientConfig.ServerURL)
+
+	// Инициализируем локальное хранилище
+	var err error
+	localStorage, err = client.NewLocalStorage(clientConfig.ConfigDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to initialize local storage: %v\n", err)
+		os.Exit(1)
+	}
 }
 
 func init() {

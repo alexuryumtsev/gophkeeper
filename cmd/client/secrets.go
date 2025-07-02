@@ -15,14 +15,9 @@ import (
 )
 
 var secretsCmd = &cobra.Command{
-	Use:   "secrets",
-	Short: "Manage secrets",
-	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		if err := setupAuthentication(); err != nil {
-			fmt.Fprintf(os.Stderr, "%v\n", err)
-			os.Exit(1)
-		}
-	},
+	Use:              "secrets",
+	Short:            "Manage secrets",
+	PersistentPreRun: requireAuth(),
 }
 
 var listCmd = &cobra.Command{

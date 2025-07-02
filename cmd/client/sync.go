@@ -11,14 +11,9 @@ import (
 )
 
 var syncCmd = &cobra.Command{
-	Use:   "sync",
-	Short: "Synchronize secrets with server",
-	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		if err := setupAuthentication(); err != nil {
-			fmt.Fprintf(os.Stderr, "%v\n", err)
-			os.Exit(1)
-		}
-	},
+	Use:              "sync",
+	Short:            "Synchronize secrets with server",
+	PersistentPreRun: requireAuth(),
 	Run: func(cmd *cobra.Command, args []string) {
 		ctx := context.Background()
 

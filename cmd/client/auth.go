@@ -168,3 +168,13 @@ func setupAuthentication() error {
 	
 	return nil
 }
+
+// requireAuth возвращает функцию PersistentPreRun для команд, требующих аутентификации
+func requireAuth() func(cmd *cobra.Command, args []string) {
+	return func(cmd *cobra.Command, args []string) {
+		if err := setupAuthentication(); err != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
+			os.Exit(1)
+		}
+	}
+}
