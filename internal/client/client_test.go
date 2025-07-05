@@ -20,8 +20,7 @@ func TestNewClient(t *testing.T) {
 	client := NewClient(baseURL)
 
 	assert.NotNil(t, client)
-	assert.Equal(t, baseURL, client.baseURL)
-	assert.NotNil(t, client.httpClient)
+	assert.NotNil(t, client.router)
 	assert.Empty(t, client.token)
 	assert.Empty(t, client.masterPassword)
 }
@@ -225,10 +224,10 @@ func TestClient_NetworkError(t *testing.T) {
 	_, err := client.Register(ctx, "user", "email", "pass")
 	require.Error(t, err)
 	// Проверяем что это сетевая ошибка (может быть разные сообщения в зависимости от ОС)
-	assert.True(t, 
-		strings.Contains(err.Error(), "connection refused") || 
-		strings.Contains(err.Error(), "invalid port") ||
-		strings.Contains(err.Error(), "dial tcp"),
+	assert.True(t,
+		strings.Contains(err.Error(), "connection refused") ||
+			strings.Contains(err.Error(), "invalid port") ||
+			strings.Contains(err.Error(), "dial tcp"),
 		"Expected network error, got: %v", err)
 }
 
@@ -237,6 +236,10 @@ func TestClient_DoRequest_MissingToken(t *testing.T) {
 		// Проверяем что Authorization header отсутствует
 		assert.Empty(t, r.Header.Get("Authorization"))
 		w.WriteHeader(http.StatusUnauthorized)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "Unauthorized",
+		})
 	}))
 	defer server.Close()
 
@@ -259,7 +262,12 @@ func TestClient_DoRequest_MissingMasterPassword(t *testing.T) {
 		// Проверяем что X-Master-Password header отсутствует
 		assert.Empty(t, r.Header.Get("X-Master-Password"))
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]string{"message": "ok"})
+		w.Header().Set("Content-Type", "application/json")
+		response := models.SecretResponse{
+			Name: "Test",
+			Type: models.SecretTypeText,
+		}
+		json.NewEncoder(w).Encode(response)
 	}))
 	defer server.Close()
 

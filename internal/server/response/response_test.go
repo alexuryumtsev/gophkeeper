@@ -1,4 +1,4 @@
-package server
+package response
 
 import (
 	"encoding/json"
@@ -9,6 +9,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
+	
+	"github.com/uryumtsevaa/gophkeeper/internal/server/common"
 )
 
 // Вспомогательная функция для создания тестового контекста
@@ -25,7 +27,7 @@ func TestNewResponseHandler(t *testing.T) {
 		handler := NewResponseHandler()
 
 		assert.NotNil(t, handler)
-		assert.Implements(t, (*ResponseHandler)(nil), handler)
+		assert.Implements(t, (*common.ResponseHandler)(nil), handler)
 	})
 }
 
@@ -35,7 +37,7 @@ func TestResponseHandler_HandleError(t *testing.T) {
 		handler := NewResponseHandler()
 		c, w := createTestContextForResponse()
 
-		validationErr := &ValidationError{
+		validationErr := &common.ValidationError{
 			Field:   "username",
 			Message: "Username is required",
 			Status:  http.StatusBadRequest,
@@ -55,7 +57,7 @@ func TestResponseHandler_HandleError(t *testing.T) {
 		handler := NewResponseHandler()
 		c, w := createTestContextForResponse()
 
-		validationErr := &ValidationError{
+		validationErr := &common.ValidationError{
 			Field:   "user_id",
 			Message: "Unauthorized",
 			Status:  http.StatusUnauthorized,

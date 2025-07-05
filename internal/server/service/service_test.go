@@ -1,7 +1,9 @@
-package server
+package service
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
@@ -9,6 +11,8 @@ import (
 
 	"github.com/uryumtsevaa/gophkeeper/internal/crypto"
 	"github.com/uryumtsevaa/gophkeeper/internal/models"
+	"github.com/uryumtsevaa/gophkeeper/internal/server/auth"
+	"github.com/uryumtsevaa/gophkeeper/internal/server/interfaces"
 )
 
 // MockRepository для тестирования
@@ -120,23 +124,136 @@ func (m *MockRepository) GetSyncOperationsAfter(ctx context.Context, userID uuid
 	return result, nil
 }
 
+// Test helper functions
+
+// mockCryptoService для тестирования
+type mockCryptoService struct {
+	encryptor crypto.Encryptor
+}
+
+// NewMockCryptoService создает новый мок сервис шифрования
+func NewMockCryptoService(encryptor crypto.Encryptor) interfaces.CryptoService {
+	return &mockCryptoService{
+		encryptor: encryptor,
+	}
+}
+
+// EncryptSecretData шифрует данные секрета
+func (c *mockCryptoService) EncryptSecretData(data interface{}, masterPassword string) ([]byte, error) {
+	dataBytes, err := json.Marshal(data)
+	if err != nil {
+		return nil, fmt.Errorf("failed to serialize data: %w", err)
+	}
+	return c.encryptor.Encrypt(dataBytes, masterPassword)
+}
+
+// DecryptSecretData расшифровывает данные секрета
+func (c *mockCryptoService) DecryptSecretData(encryptedData []byte, masterPassword string) (interface{}, error) {
+	decryptedBytes, err := c.encryptor.Decrypt(encryptedData, masterPassword)
+	if err != nil {
+		return nil, err
+	}
+	
+	var data interface{}
+	if err := json.Unmarshal(decryptedBytes, &data); err != nil {
+		return nil, fmt.Errorf("failed to deserialize data: %w", err)
+	}
+	
+	return data, nil
+}
+
+// mockSyncService для тестирования
+type mockSyncService struct {
+	repo          interfaces.Repository
+	cryptoService interfaces.CryptoService
+}
+
+// NewMockSyncService создает новый мок сервис синхронизации
+func NewMockSyncService(repo interfaces.Repository, cryptoService interfaces.CryptoService) interfaces.SyncService {
+	return &mockSyncService{
+		repo:          repo,
+		cryptoService: cryptoService,
+	}
+}
+
+// CreateSyncOperation создает операцию синхронизации
+func (s *mockSyncService) CreateSyncOperation(ctx context.Context, userID, secretID uuid.UUID, operation models.OperationType) error {
+	syncOp := &models.SyncOperation{
+		ID:        uuid.New(),
+		UserID:    userID,
+		SecretID:  secretID,
+		Operation: operation,
+		Timestamp: time.Now(),
+	}
+	return s.repo.CreateSyncOperation(ctx, syncOp)
+}
+
+// ProcessSyncRequest обрабатывает запрос синхронизации
+func (s *mockSyncService) ProcessSyncRequest(ctx context.Context, userID uuid.UUID, req *models.SyncRequest, masterPassword string) (*models.SyncResponse, error) {
+	// Получаем секреты, измененные после указанной даты
+	secrets, err := s.repo.GetSecretsModifiedAfter(ctx, userID, req.LastSyncTime)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get modified secrets: %w", err)
+	}
+
+	var secretResponses []models.SecretResponse
+	for _, secret := range secrets {
+		// Расшифровываем данные для передачи
+		decryptedData, err := s.cryptoService.DecryptSecretData(secret.Data, masterPassword)
+		if err != nil {
+			continue // Пропускаем секреты, которые не удается расшифровать
+		}
+
+		secretResponses = append(secretResponses, models.SecretResponse{
+			ID:        secret.ID,
+			Type:      secret.Type,
+			Name:      secret.Name,
+			Data:      decryptedData,
+			Metadata:  secret.Metadata,
+			CreatedAt: secret.CreatedAt,
+			UpdatedAt: secret.UpdatedAt,
+			SyncHash:  secret.SyncHash,
+		})
+	}
+
+	return &models.SyncResponse{
+		UpdatedSecrets: secretResponses,
+		DeletedSecrets: []uuid.UUID{},
+		SyncTime:       time.Now(),
+	}, nil
+}
+
+// testTransactionManager для тестирования
+type testTransactionManager struct{}
+
+// NewTestTransactionManager создает новый тестовый менеджер транзакций
+func NewTestTransactionManager() interfaces.TransactionManager {
+	return &testTransactionManager{}
+}
+
+// WithTransaction выполняет функцию в контексте транзакции (тест)
+func (m *testTransactionManager) WithTransaction(ctx context.Context, fn func(context.Context) error) error {
+	return fn(ctx)
+}
+
 func TestService_RegisterUser(t *testing.T) {
 	repo := NewMockRepository()
-	auth := NewAuthService("test-secret")
+	authService := auth.NewAuthService("test-secret")
 	encryptor := crypto.NewAESEncryptor()
-	cryptoSvc := NewCryptoService(encryptor)
-	syncSvc := NewSyncService(repo, cryptoSvc)
-	txManager := NewMockTransactionManager()
-	authDomainSvc := NewAuthDomainService(repo, auth)
+	cryptoSvc := NewMockCryptoService(encryptor)
+	syncSvc := NewMockSyncService(repo, cryptoSvc)
+	txManager := NewTestTransactionManager()
+	authServiceAdapter := NewAuthServiceAdapter(authService)
+	authDomainSvc := NewAuthDomainService(repo, authServiceAdapter)
 	secretsDomainSvc := NewSecretsDomainService(repo, cryptoSvc, txManager, syncSvc)
 	syncDomainSvc := NewSyncDomainService(syncSvc)
-	
+
 	domains := DomainServices{
 		Auth:    authDomainSvc,
 		Secrets: secretsDomainSvc,
 		Sync:    syncDomainSvc,
 	}
-	service := NewService(domains)
+	serviceInstance := NewService(domains)
 
 	req := &models.RegisterRequest{
 		Username: "testuser",
@@ -145,7 +262,7 @@ func TestService_RegisterUser(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	response, err := service.RegisterUser(ctx, req)
+	response, err := serviceInstance.RegisterUser(ctx, req)
 	if err != nil {
 		t.Fatalf("RegisterUser failed: %v", err)
 	}
@@ -180,21 +297,22 @@ func TestService_RegisterUser(t *testing.T) {
 
 func TestService_LoginUser(t *testing.T) {
 	repo := NewMockRepository()
-	auth := NewAuthService("test-secret")
+	authService := auth.NewAuthService("test-secret")
 	encryptor := crypto.NewAESEncryptor()
-	cryptoSvc := NewCryptoService(encryptor)
-	syncSvc := NewSyncService(repo, cryptoSvc)
-	txManager := NewMockTransactionManager()
-	authDomainSvc := NewAuthDomainService(repo, auth)
+	cryptoSvc := NewMockCryptoService(encryptor)
+	syncSvc := NewMockSyncService(repo, cryptoSvc)
+	txManager := NewTestTransactionManager()
+	authServiceAdapter := NewAuthServiceAdapter(authService)
+	authDomainSvc := NewAuthDomainService(repo, authServiceAdapter)
 	secretsDomainSvc := NewSecretsDomainService(repo, cryptoSvc, txManager, syncSvc)
 	syncDomainSvc := NewSyncDomainService(syncSvc)
-	
+
 	domains := DomainServices{
 		Auth:    authDomainSvc,
 		Secrets: secretsDomainSvc,
 		Sync:    syncDomainSvc,
 	}
-	service := NewService(domains)
+	serviceInstance := NewService(domains)
 
 	// Сначала регистрируем пользователя
 	registerReq := &models.RegisterRequest{
@@ -204,7 +322,7 @@ func TestService_LoginUser(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	_, err := service.RegisterUser(ctx, registerReq)
+	_, err := serviceInstance.RegisterUser(ctx, registerReq)
 	if err != nil {
 		t.Fatalf("RegisterUser failed: %v", err)
 	}
@@ -215,7 +333,7 @@ func TestService_LoginUser(t *testing.T) {
 		Password: "password123",
 	}
 
-	response, err := service.LoginUser(ctx, loginReq)
+	response, err := serviceInstance.LoginUser(ctx, loginReq)
 	if err != nil {
 		t.Fatalf("LoginUser failed: %v", err)
 	}
@@ -234,7 +352,7 @@ func TestService_LoginUser(t *testing.T) {
 		Password: "wrongpassword",
 	}
 
-	_, err = service.LoginUser(ctx, wrongPasswordReq)
+	_, err = serviceInstance.LoginUser(ctx, wrongPasswordReq)
 	if err == nil {
 		t.Error("Expected login to fail with wrong password")
 	}
@@ -242,21 +360,22 @@ func TestService_LoginUser(t *testing.T) {
 
 func TestService_CreateSecret(t *testing.T) {
 	repo := NewMockRepository()
-	auth := NewAuthService("test-secret")
+	authService := auth.NewAuthService("test-secret")
 	encryptor := crypto.NewAESEncryptor()
-	cryptoSvc := NewCryptoService(encryptor)
-	syncSvc := NewSyncService(repo, cryptoSvc)
-	txManager := NewMockTransactionManager()
-	authDomainSvc := NewAuthDomainService(repo, auth)
+	cryptoSvc := NewMockCryptoService(encryptor)
+	syncSvc := NewMockSyncService(repo, cryptoSvc)
+	txManager := NewTestTransactionManager()
+	authServiceAdapter := NewAuthServiceAdapter(authService)
+	authDomainSvc := NewAuthDomainService(repo, authServiceAdapter)
 	secretsDomainSvc := NewSecretsDomainService(repo, cryptoSvc, txManager, syncSvc)
 	syncDomainSvc := NewSyncDomainService(syncSvc)
-	
+
 	domains := DomainServices{
 		Auth:    authDomainSvc,
 		Secrets: secretsDomainSvc,
 		Sync:    syncDomainSvc,
 	}
-	service := NewService(domains)
+	serviceInstance := NewService(domains)
 
 	userID := uuid.New()
 	masterPassword := "master-password"
@@ -276,7 +395,7 @@ func TestService_CreateSecret(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	response, err := service.CreateSecret(ctx, userID, req, masterPassword)
+	response, err := serviceInstance.CreateSecret(ctx, userID, req, masterPassword)
 	if err != nil {
 		t.Fatalf("CreateSecret failed: %v", err)
 	}
@@ -307,21 +426,22 @@ func TestService_CreateSecret(t *testing.T) {
 
 func TestService_GetSecrets(t *testing.T) {
 	repo := NewMockRepository()
-	auth := NewAuthService("test-secret")
+	authService := auth.NewAuthService("test-secret")
 	encryptor := crypto.NewAESEncryptor()
-	cryptoSvc := NewCryptoService(encryptor)
-	syncSvc := NewSyncService(repo, cryptoSvc)
-	txManager := NewMockTransactionManager()
-	authDomainSvc := NewAuthDomainService(repo, auth)
+	cryptoSvc := NewMockCryptoService(encryptor)
+	syncSvc := NewMockSyncService(repo, cryptoSvc)
+	txManager := NewTestTransactionManager()
+	authServiceAdapter := NewAuthServiceAdapter(authService)
+	authDomainSvc := NewAuthDomainService(repo, authServiceAdapter)
 	secretsDomainSvc := NewSecretsDomainService(repo, cryptoSvc, txManager, syncSvc)
 	syncDomainSvc := NewSyncDomainService(syncSvc)
-	
+
 	domains := DomainServices{
 		Auth:    authDomainSvc,
 		Secrets: secretsDomainSvc,
 		Sync:    syncDomainSvc,
 	}
-	service := NewService(domains)
+	serviceInstance := NewService(domains)
 
 	userID := uuid.New()
 	masterPassword := "master-password"
@@ -341,7 +461,7 @@ func TestService_GetSecrets(t *testing.T) {
 		}
 
 		ctx := context.Background()
-		_, err := service.CreateSecret(ctx, userID, req, masterPassword)
+		_, err := serviceInstance.CreateSecret(ctx, userID, req, masterPassword)
 		if err != nil {
 			t.Fatalf("CreateSecret failed: %v", err)
 		}
@@ -349,7 +469,7 @@ func TestService_GetSecrets(t *testing.T) {
 
 	// Получаем список секретов
 	ctx := context.Background()
-	response, err := service.GetSecrets(ctx, userID, masterPassword)
+	response, err := serviceInstance.GetSecrets(ctx, userID, masterPassword)
 	if err != nil {
 		t.Fatalf("GetSecrets failed: %v", err)
 	}
@@ -364,12 +484,12 @@ func TestService_GetSecrets(t *testing.T) {
 }
 
 func TestAuthService_GenerateAndValidateToken(t *testing.T) {
-	auth := NewAuthService("test-secret")
+	authService := auth.NewAuthService("test-secret")
 	userID := uuid.New()
 	username := "testuser"
 
 	// Генерируем токен
-	token, err := auth.GenerateToken(userID, username)
+	token, err := authService.GenerateToken(userID, username)
 	if err != nil {
 		t.Fatalf("GenerateToken failed: %v", err)
 	}
@@ -379,7 +499,7 @@ func TestAuthService_GenerateAndValidateToken(t *testing.T) {
 	}
 
 	// Валидируем токен
-	claims, err := auth.ValidateToken(token)
+	claims, err := authService.ValidateToken(token)
 	if err != nil {
 		t.Fatalf("ValidateToken failed: %v", err)
 	}
@@ -393,7 +513,7 @@ func TestAuthService_GenerateAndValidateToken(t *testing.T) {
 	}
 
 	// Тест с невалидным токеном
-	_, err = auth.ValidateToken("invalid-token")
+	_, err = authService.ValidateToken("invalid-token")
 	if err == nil {
 		t.Error("Expected validation to fail for invalid token")
 	}

@@ -9,20 +9,22 @@ import (
 	swaggerFiles "github.com/swaggo/files"
 
 	"github.com/uryumtsevaa/gophkeeper/docs"
-	"github.com/uryumtsevaa/gophkeeper/internal/interfaces"
+	"github.com/uryumtsevaa/gophkeeper/internal/server/handlers"
+	"github.com/uryumtsevaa/gophkeeper/internal/server/interfaces"
+	"github.com/uryumtsevaa/gophkeeper/internal/server/middleware"
 )
 
 // Router представляет HTTP роутер
 type Router struct {
 	engine   *gin.Engine
-	handlers interfaces.HandlerInterface
+	handlers *handlers.Handlers
 	authSvc  interfaces.AuthServiceInterface
 }
 
 // NewRouter создает новый роутер
-func NewRouter(handlers interfaces.HandlerInterface, authSvc interfaces.AuthServiceInterface) *Router {
+func NewRouter(handlers *handlers.Handlers, authSvc interfaces.AuthServiceInterface) *Router {
 	engine := gin.Default()
-	engine.Use(CORSMiddleware())
+	engine.Use(middleware.CORSMiddleware())
 
 	return &Router{
 		engine:   engine,
@@ -44,7 +46,7 @@ func (r *Router) SetupRoutes(port int) {
 
 	// Защищенные маршруты
 	protected := api.Group("/")
-	protected.Use(r.AuthMiddleware())
+	protected.Use(middleware.AuthMiddleware(r.authSvc))
 	{
 		secrets := protected.Group("/secrets")
 		{

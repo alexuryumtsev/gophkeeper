@@ -7,13 +7,14 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/uryumtsevaa/gophkeeper/internal/client"
+	clientstorage "github.com/uryumtsevaa/gophkeeper/internal/client/storage"
 	"github.com/uryumtsevaa/gophkeeper/internal/config"
 )
 
 var (
 	clientConfig   *config.ClientConfig
 	clientInstance *client.Client
-	localStorage   *client.LocalStorage
+	localStorage   *clientstorage.LocalStorage
 )
 
 func main() {
@@ -38,7 +39,7 @@ func initializeClient(cmd *cobra.Command, args []string) {
 
 	// Инициализируем локальное хранилище
 	var err error
-	localStorage, err = client.NewLocalStorage(clientConfig.ConfigDir)
+	localStorage, err = clientstorage.NewLocalStorage(clientConfig.ConfigDir)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to initialize local storage: %v\n", err)
 		os.Exit(1)

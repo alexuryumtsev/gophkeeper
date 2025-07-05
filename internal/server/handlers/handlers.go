@@ -1,4 +1,4 @@
-package server
+package handlers
 
 import (
 	"net/http"
@@ -7,13 +7,15 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/uryumtsevaa/gophkeeper/internal/models"
+	"github.com/uryumtsevaa/gophkeeper/internal/server/common"
+	"github.com/uryumtsevaa/gophkeeper/internal/server/interfaces"
 )
 
 // Handlers обработчики HTTP запросов
 type Handlers struct {
-	service          ServiceInterface
-	validationSvc    ValidationService
-	responseHandler  ResponseHandler
+	service          interfaces.ServiceInterface
+	validationSvc    common.ValidationService
+	responseHandler  common.ResponseHandler
 }
 
 // withUserValidation middleware для валидации пользователя
@@ -84,7 +86,7 @@ func (h *Handlers) withUserAndSecret(handler func(c *gin.Context, uid, sid uuid.
 }
 
 // NewHandlers создает новые обработчики
-func NewHandlers(service ServiceInterface, validationSvc ValidationService, responseHandler ResponseHandler) *Handlers {
+func NewHandlers(service interfaces.ServiceInterface, validationSvc common.ValidationService, responseHandler common.ResponseHandler) *Handlers {
 	return &Handlers{
 		service:         service,
 		validationSvc:   validationSvc,

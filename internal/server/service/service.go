@@ -1,4 +1,4 @@
-package server
+package service
 
 import (
 	"context"
@@ -9,35 +9,25 @@ import (
 
 	"github.com/uryumtsevaa/gophkeeper/internal/crypto"
 	"github.com/uryumtsevaa/gophkeeper/internal/models"
+	"github.com/uryumtsevaa/gophkeeper/internal/server/interfaces"
 )
 
-// ServiceInterface интерфейс для бизнес-логики
-type ServiceInterface interface {
-	RegisterUser(ctx context.Context, req *models.RegisterRequest) (*models.LoginResponse, error)
-	LoginUser(ctx context.Context, req *models.LoginRequest) (*models.LoginResponse, error)
-	CreateSecret(ctx context.Context, userID uuid.UUID, req *models.SecretRequest, masterPassword string) (*models.SecretResponse, error)
-	GetSecrets(ctx context.Context, userID uuid.UUID, masterPassword string) (*models.SecretsListResponse, error)
-	GetSecret(ctx context.Context, secretID, userID uuid.UUID, masterPassword string) (*models.SecretResponse, error)
-	UpdateSecret(ctx context.Context, secretID, userID uuid.UUID, req *models.SecretRequest, masterPassword string) (*models.SecretResponse, error)
-	DeleteSecret(ctx context.Context, secretID, userID uuid.UUID) error
-	SyncSecrets(ctx context.Context, userID uuid.UUID, req *models.SyncRequest, masterPassword string) (*models.SyncResponse, error)
-}
 
 // DataDependencies группирует зависимости для работы с данными
 type DataDependencies struct {
-	Repository  Repository
-	TxManager   TransactionManager
+	Repository  interfaces.Repository
+	TxManager   interfaces.TransactionManager
 }
 
 // SecurityDependencies группирует зависимости для безопасности
 type SecurityDependencies struct {
-	Auth      AuthServiceInterface
-	CryptoSvc CryptoService
+	Auth      interfaces.AuthServiceInterface
+	CryptoSvc interfaces.CryptoService
 }
 
 // BusinessDependencies группирует зависимости для бизнес-логики
 type BusinessDependencies struct {
-	SyncSvc SyncService
+	SyncSvc interfaces.SyncService
 }
 
 // ServiceDependencies группирует все зависимости сервиса
@@ -55,12 +45,12 @@ type AuthDomainService interface {
 
 // authDomainService реализация доменного сервиса аутентификации
 type authDomainService struct {
-	repo Repository
-	auth AuthServiceInterface
+	repo interfaces.Repository
+	auth interfaces.AuthServiceInterface
 }
 
 // NewAuthDomainService создает новый доменный сервис аутентификации
-func NewAuthDomainService(repo Repository, auth AuthServiceInterface) AuthDomainService {
+func NewAuthDomainService(repo interfaces.Repository, auth interfaces.AuthServiceInterface) AuthDomainService {
 	return &authDomainService{
 		repo: repo,
 		auth: auth,
@@ -151,14 +141,14 @@ type SecretsDomainService interface {
 
 // secretsDomainService реализация доменного сервиса секретов
 type secretsDomainService struct {
-	repo      Repository
-	cryptoSvc CryptoService
-	txManager TransactionManager
-	syncSvc   SyncService
+	repo      interfaces.Repository
+	cryptoSvc interfaces.CryptoService
+	txManager interfaces.TransactionManager
+	syncSvc   interfaces.SyncService
 }
 
 // NewSecretsDomainService создает новый доменный сервис секретов
-func NewSecretsDomainService(repo Repository, cryptoSvc CryptoService, txManager TransactionManager, syncSvc SyncService) SecretsDomainService {
+func NewSecretsDomainService(repo interfaces.Repository, cryptoSvc interfaces.CryptoService, txManager interfaces.TransactionManager, syncSvc interfaces.SyncService) SecretsDomainService {
 	return &secretsDomainService{
 		repo:      repo,
 		cryptoSvc: cryptoSvc,
@@ -336,11 +326,11 @@ type SyncDomainService interface {
 
 // syncDomainService реализация доменного сервиса синхронизации
 type syncDomainService struct {
-	syncSvc SyncService
+	syncSvc interfaces.SyncService
 }
 
 // NewSyncDomainService создает новый доменный сервис синхронизации
-func NewSyncDomainService(syncSvc SyncService) SyncDomainService {
+func NewSyncDomainService(syncSvc interfaces.SyncService) SyncDomainService {
 	return &syncDomainService{
 		syncSvc: syncSvc,
 	}
@@ -409,4 +399,3 @@ func (s *Service) DeleteSecret(ctx context.Context, secretID, userID uuid.UUID) 
 func (s *Service) SyncSecrets(ctx context.Context, userID uuid.UUID, req *models.SyncRequest, masterPassword string) (*models.SyncResponse, error) {
 	return s.domains.Sync.SyncSecrets(ctx, userID, req, masterPassword)
 }
-

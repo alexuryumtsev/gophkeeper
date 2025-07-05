@@ -1,4 +1,4 @@
-package server
+package auth
 
 // AuthServiceWrapper обертка для AuthService для реализации интерфейса роутера
 type AuthServiceWrapper struct {

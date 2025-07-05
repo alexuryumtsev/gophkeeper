@@ -1,4 +1,4 @@
-package server
+package handlers
 
 import (
 	"bytes"
@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/mock"
 
 	"github.com/uryumtsevaa/gophkeeper/internal/models"
+	"github.com/uryumtsevaa/gophkeeper/internal/server/interfaces"
 )
 
 // MockService для тестирования handlers
@@ -24,7 +25,7 @@ type MockService struct {
 }
 
 // Ensure MockService implements ServiceInterface
-var _ ServiceInterface = (*MockService)(nil)
+var _ interfaces.ServiceInterface = (*MockService)(nil)
 
 func (m *MockService) RegisterUser(ctx context.Context, req *models.RegisterRequest) (*models.LoginResponse, error) {
 	args := m.Called(ctx, req)

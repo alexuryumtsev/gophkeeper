@@ -1,4 +1,4 @@
-package server
+package validation
 
 import (
 	"bytes"
@@ -10,6 +10,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+
+	"github.com/uryumtsevaa/gophkeeper/internal/server/common"
 )
 
 // MockResponseHandler для тестирования ValidationService
@@ -37,19 +39,6 @@ func createTestContext() (*gin.Context, *httptest.ResponseRecorder) {
 	return c, w
 }
 
-// Тесты для ValidationError
-func TestValidationError_Error(t *testing.T) {
-	t.Run("возвращает правильное сообщение об ошибке", func(t *testing.T) {
-		err := &ValidationError{
-			Field:   "username",
-			Message: "Username is required",
-			Status:  http.StatusBadRequest,
-		}
-
-		assert.Equal(t, "Username is required", err.Error())
-	})
-}
-
 // Тесты для NewValidationService
 func TestNewValidationService(t *testing.T) {
 	t.Run("создает новый ValidationService", func(t *testing.T) {
@@ -57,7 +46,7 @@ func TestNewValidationService(t *testing.T) {
 		service := NewValidationService(mockResponseHandler)
 
 		assert.NotNil(t, service)
-		assert.Implements(t, (*ValidationService)(nil), service)
+		assert.Implements(t, (*common.ValidationService)(nil), service)
 	})
 }
 
@@ -85,7 +74,7 @@ func TestValidationService_ValidateUserID(t *testing.T) {
 		c, _ := createTestContext()
 		// Не устанавливаем user_id
 
-		expectedErr := &ValidationError{
+		expectedErr := &common.ValidationError{
 			Field:   "user_id",
 			Message: "Unauthorized",
 			Status:  http.StatusUnauthorized,
@@ -108,7 +97,7 @@ func TestValidationService_ValidateUserID(t *testing.T) {
 		c, _ := createTestContext()
 		c.Set("user_id", "invalid-uuid")
 
-		expectedErr := &ValidationError{
+		expectedErr := &common.ValidationError{
 			Field:   "user_id",
 			Message: "Invalid user ID",
 			Status:  http.StatusBadRequest,
@@ -131,7 +120,7 @@ func TestValidationService_ValidateUserID(t *testing.T) {
 		c, _ := createTestContext()
 		c.Set("user_id", "")
 
-		expectedErr := &ValidationError{
+		expectedErr := &common.ValidationError{
 			Field:   "user_id",
 			Message: "Unauthorized",
 			Status:  http.StatusUnauthorized,
@@ -172,7 +161,7 @@ func TestValidationService_ValidateMasterPassword(t *testing.T) {
 		c.Request, _ = http.NewRequest(http.MethodPost, "/test", nil)
 		// Не устанавливаем заголовок X-Master-Password
 
-		expectedErr := &ValidationError{
+		expectedErr := &common.ValidationError{
 			Field:   "master_password",
 			Message: "Master password required",
 			Status:  http.StatusBadRequest,
@@ -196,7 +185,7 @@ func TestValidationService_ValidateMasterPassword(t *testing.T) {
 		c.Request, _ = http.NewRequest(http.MethodPost, "/test", nil)
 		c.Request.Header.Set("X-Master-Password", "")
 
-		expectedErr := &ValidationError{
+		expectedErr := &common.ValidationError{
 			Field:   "master_password",
 			Message: "Master password required",
 			Status:  http.StatusBadRequest,
@@ -238,7 +227,7 @@ func TestValidationService_ValidateSecretID(t *testing.T) {
 		c, _ := createTestContext()
 		// Не устанавливаем параметр id
 
-		expectedErr := &ValidationError{
+		expectedErr := &common.ValidationError{
 			Field:   "secret_id",
 			Message: "Secret ID is required",
 			Status:  http.StatusBadRequest,
@@ -263,7 +252,7 @@ func TestValidationService_ValidateSecretID(t *testing.T) {
 			{Key: "id", Value: "invalid-uuid"},
 		}
 
-		expectedErr := &ValidationError{
+		expectedErr := &common.ValidationError{
 			Field:   "secret_id",
 			Message: "Invalid secret ID",
 			Status:  http.StatusBadRequest,
@@ -288,7 +277,7 @@ func TestValidationService_ValidateSecretID(t *testing.T) {
 			{Key: "id", Value: ""},
 		}
 
-		expectedErr := &ValidationError{
+		expectedErr := &common.ValidationError{
 			Field:   "secret_id",
 			Message: "Secret ID is required",
 			Status:  http.StatusBadRequest,
@@ -344,7 +333,7 @@ func TestValidationService_BindJSON(t *testing.T) {
 		c.Request.Header.Set("Content-Type", "application/json")
 
 		mockResponseHandler.On("HandleError", c, mock.MatchedBy(func(err error) bool {
-			validationErr, ok := err.(*ValidationError)
+			validationErr, ok := err.(*common.ValidationError)
 			return ok && validationErr.Field == "json_body"
 		})).Return()
 
@@ -352,7 +341,7 @@ func TestValidationService_BindJSON(t *testing.T) {
 		err := service.BindJSON(c, &result)
 
 		assert.Error(t, err)
-		validationErr, ok := err.(*ValidationError)
+		validationErr, ok := err.(*common.ValidationError)
 		assert.True(t, ok)
 		assert.Equal(t, "json_body", validationErr.Field)
 		mockResponseHandler.AssertExpectations(t)
@@ -372,7 +361,7 @@ func TestValidationService_BindJSON(t *testing.T) {
 		c.Request.Header.Set("Content-Type", "application/json")
 
 		mockResponseHandler.On("HandleError", c, mock.MatchedBy(func(err error) bool {
-			validationErr, ok := err.(*ValidationError)
+			validationErr, ok := err.(*common.ValidationError)
 			return ok && validationErr.Field == "json_body"
 		})).Return()
 
@@ -380,7 +369,7 @@ func TestValidationService_BindJSON(t *testing.T) {
 		err := service.BindJSON(c, &result)
 
 		assert.Error(t, err)
-		validationErr, ok := err.(*ValidationError)
+		validationErr, ok := err.(*common.ValidationError)
 		assert.True(t, ok)
 		assert.Equal(t, "json_body", validationErr.Field)
 		mockResponseHandler.AssertExpectations(t)
@@ -399,7 +388,7 @@ func TestValidationService_BindJSON(t *testing.T) {
 		c.Request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 		mockResponseHandler.On("HandleError", c, mock.MatchedBy(func(err error) bool {
-			validationErr, ok := err.(*ValidationError)
+			validationErr, ok := err.(*common.ValidationError)
 			return ok && validationErr.Field == "json_body"
 		})).Return()
 
@@ -407,7 +396,7 @@ func TestValidationService_BindJSON(t *testing.T) {
 		err := service.BindJSON(c, &result)
 
 		assert.Error(t, err)
-		validationErr, ok := err.(*ValidationError)
+		validationErr, ok := err.(*common.ValidationError)
 		assert.True(t, ok)
 		assert.Equal(t, "json_body", validationErr.Field)
 		mockResponseHandler.AssertExpectations(t)

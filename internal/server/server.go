@@ -5,7 +5,15 @@ import (
 	"fmt"
 
 	"github.com/uryumtsevaa/gophkeeper/internal/crypto"
-	"github.com/uryumtsevaa/gophkeeper/internal/router"
+	"github.com/uryumtsevaa/gophkeeper/internal/server/auth"
+	"github.com/uryumtsevaa/gophkeeper/internal/server/handlers"
+	"github.com/uryumtsevaa/gophkeeper/internal/server/interfaces"
+	"github.com/uryumtsevaa/gophkeeper/internal/server/repository"
+	"github.com/uryumtsevaa/gophkeeper/internal/server/response"
+	"github.com/uryumtsevaa/gophkeeper/internal/server/router"
+	"github.com/uryumtsevaa/gophkeeper/internal/server/service"
+	"github.com/uryumtsevaa/gophkeeper/internal/server/transaction"
+	"github.com/uryumtsevaa/gophkeeper/internal/server/validation"
 	"github.com/uryumtsevaa/gophkeeper/internal/storage"
 )
 
@@ -21,8 +29,8 @@ type Server struct {
 	config   Config
 	router   *router.Router
 	database *storage.Database
-	service  *Service
-	handlers *Handlers
+	service  interfaces.ServiceInterface
+	handlers *handlers.Handlers
 }
 
 // NewServer создает новый сервер
@@ -40,33 +48,34 @@ func NewServer(config Config) (*Server, error) {
 
 	// Инициализируем компоненты
 	encryptor := crypto.NewAESEncryptor()
-	repository := NewPostgresRepository(db.Pool, encryptor)
-	authService := NewAuthService(config.JWTSecret)
-	
+	repository := repository.NewPostgresRepository(db.Pool, encryptor)
+	authService := auth.NewAuthService(config.JWTSecret)
+
 	// Создаем новые сервисы
-	responseHandler := NewResponseHandler()
-	validationSvc := NewValidationService(responseHandler)
-	cryptoSvc := NewCryptoService(encryptor)
-	txManager := NewTransactionManager(db.Pool)
-	syncSvc := NewSyncService(repository, cryptoSvc)
-	
+	responseHandler := response.NewResponseHandler()
+	validationSvc := validation.NewValidationService(responseHandler)
+	cryptoSvc := service.NewCryptoService(encryptor)
+	txManager := transaction.NewTransactionManager(db.Pool)
+	syncSvc := service.NewSyncService(repository, cryptoSvc)
+
 	// Создаем доменные сервисы
-	authDomainSvc := NewAuthDomainService(repository, authService)
-	secretsDomainSvc := NewSecretsDomainService(repository, cryptoSvc, txManager, syncSvc)
-	syncDomainSvc := NewSyncDomainService(syncSvc)
-	
+	authServiceAdapter := service.NewAuthServiceAdapter(authService)
+	authDomainSvc := service.NewAuthDomainService(repository, authServiceAdapter)
+	secretsDomainSvc := service.NewSecretsDomainService(repository, cryptoSvc, txManager, syncSvc)
+	syncDomainSvc := service.NewSyncDomainService(syncSvc)
+
 	// Группируем доменные сервисы
-	domains := DomainServices{
+	domains := service.DomainServices{
 		Auth:    authDomainSvc,
 		Secrets: secretsDomainSvc,
 		Sync:    syncDomainSvc,
 	}
-	
-	service := NewService(domains)
-	handlers := NewHandlers(service, validationSvc, responseHandler)
+
+	serviceInstance := service.NewService(domains)
+	handlers := handlers.NewHandlers(serviceInstance, validationSvc, responseHandler)
 
 	// Создаем роутер
-	authWrapper := NewAuthServiceWrapper(authService)
+	authWrapper := auth.NewAuthServiceWrapper(authService)
 	appRouter := router.NewRouter(handlers, authWrapper)
 	appRouter.SetupRoutes(config.Port)
 
@@ -74,13 +83,12 @@ func NewServer(config Config) (*Server, error) {
 		config:   config,
 		router:   appRouter,
 		database: db,
-		service:  service,
+		service:  serviceInstance,
 		handlers: handlers,
 	}
 
 	return server, nil
 }
-
 
 // Start запускает сервер
 func (s *Server) Start() error {

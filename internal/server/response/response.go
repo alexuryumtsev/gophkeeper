@@ -1,4 +1,4 @@
-package server
+package response
 
 import (
 	"errors"
@@ -6,22 +6,18 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-)
 
-type ResponseHandler interface {
-	HandleError(c *gin.Context, err error)
-	HandleSuccess(c *gin.Context, statusCode int, data interface{})
-	HandleValidationError(c *gin.Context, field, message string)
-}
+	"github.com/uryumtsevaa/gophkeeper/internal/server/common"
+)
 
 type responseHandler struct{}
 
-func NewResponseHandler() ResponseHandler {
+func NewResponseHandler() common.ResponseHandler {
 	return &responseHandler{}
 }
 
 func (r *responseHandler) HandleError(c *gin.Context, err error) {
-	var validationErr *ValidationError
+	var validationErr *common.ValidationError
 	if errors.As(err, &validationErr) {
 		c.JSON(validationErr.Status, gin.H{"error": validationErr.Message})
 		return

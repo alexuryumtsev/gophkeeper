@@ -1,14 +1,15 @@
-package router
+package middleware
 
 import (
 	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/uryumtsevaa/gophkeeper/internal/server/interfaces"
 )
 
 // AuthMiddleware middleware для проверки JWT токена
-func (r *Router) AuthMiddleware() gin.HandlerFunc {
+func AuthMiddleware(authService interfaces.AuthServiceInterface) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
@@ -26,7 +27,7 @@ func (r *Router) AuthMiddleware() gin.HandlerFunc {
 		}
 
 		token := tokenParts[1]
-		claims, err := r.authSvc.ValidateToken(token)
+		claims, err := authService.ValidateToken(token)
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
 			c.Abort()

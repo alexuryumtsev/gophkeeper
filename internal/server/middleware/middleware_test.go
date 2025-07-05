@@ -1,4 +1,4 @@
-package router
+package middleware
 
 import (
 	"errors"
@@ -7,8 +7,29 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/uryumtsevaa/gophkeeper/internal/server/interfaces"
 )
+
+// MockAuthService мок для сервиса аутентификации
+type MockAuthService struct {
+	mock.Mock
+}
+
+// Ensure MockAuthService implements AuthServiceInterface
+var _ interfaces.AuthServiceInterface = (*MockAuthService)(nil)
+
+func (m *MockAuthService) GenerateToken(userID uuid.UUID, username string) (string, error) {
+	args := m.Called(userID, username)
+	return args.String(0), args.Error(1)
+}
+
+func (m *MockAuthService) ValidateToken(token string) (interface{}, error) {
+	args := m.Called(token)
+	return args.Get(0), args.Error(1)
+}
 
 func TestAuthMiddleware(t *testing.T) {
 	gin.SetMode(gin.TestMode)
@@ -68,12 +89,8 @@ func TestAuthMiddleware(t *testing.T) {
 			mockAuthService := &MockAuthService{}
 			tt.mockSetup(mockAuthService)
 
-			router := &Router{
-				authSvc: mockAuthService,
-			}
-
 			engine := gin.New()
-			engine.Use(router.AuthMiddleware())
+			engine.Use(AuthMiddleware(mockAuthService))
 			engine.GET("/test", func(c *gin.Context) {
 				// Проверяем что user_id установлен в контексте для валидных токенов
 				if userID, exists := c.Get("user_id"); exists {
@@ -106,12 +123,8 @@ func TestAuthMiddlewareContextValues(t *testing.T) {
 		"user_id": "test-user-123",
 	}, nil)
 
-	router := &Router{
-		authSvc: mockAuthService,
-	}
-
 	engine := gin.New()
-	engine.Use(router.AuthMiddleware())
+	engine.Use(AuthMiddleware(mockAuthService))
 	engine.GET("/test", func(c *gin.Context) {
 		userID, exists := c.Get("user_id")
 		assert.True(t, exists)

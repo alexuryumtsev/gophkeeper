@@ -1,4 +1,4 @@
-package server
+package repository
 
 import (
 	"context"
@@ -236,9 +236,9 @@ func TestPostgresRepository_CreateUser(t *testing.T) {
 
 		testUser := getTestUserRepo()
 		mockResult := NewMockCommandTag(1)
-		
-		mockPool.On("Exec", mock.Anything, mock.AnythingOfType("string"), 
-			testUser.ID, testUser.Username, testUser.Email, testUser.PasswordHash, 
+
+		mockPool.On("Exec", mock.Anything, mock.AnythingOfType("string"),
+			testUser.ID, testUser.Username, testUser.Email, testUser.PasswordHash,
 			testUser.CreatedAt, testUser.UpdatedAt).Return(mockResult, nil)
 
 		ctx := context.Background()
@@ -255,9 +255,9 @@ func TestPostgresRepository_CreateUser(t *testing.T) {
 
 		testUser := getTestUserRepo()
 		dbError := fmt.Errorf("database error")
-		
-		mockPool.On("Exec", mock.Anything, mock.AnythingOfType("string"), 
-			mock.Anything, mock.Anything, mock.Anything, mock.Anything, 
+
+		mockPool.On("Exec", mock.Anything, mock.AnythingOfType("string"),
+			mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 			mock.Anything, mock.Anything).Return(NewMockCommandTag(0), dbError)
 
 		ctx := context.Background()
@@ -278,7 +278,7 @@ func TestPostgresRepository_GetUserByUsername(t *testing.T) {
 
 		testUser := getTestUserRepo()
 		mockRow := &MockRow{}
-		
+
 		mockRow.scanFunc = func(dest ...interface{}) error {
 			// Заполняем значениями тестового пользователя
 			if len(dest) >= 6 {
@@ -356,7 +356,7 @@ func TestPostgresRepository_GetUserByID(t *testing.T) {
 
 		testUser := getTestUserRepo()
 		mockRow := &MockRow{}
-		
+
 		mockRow.scanFunc = func(dest ...interface{}) error {
 			if len(dest) >= 6 {
 				*(dest[0].(*uuid.UUID)) = testUser.ID
@@ -391,7 +391,7 @@ func TestPostgresRepository_CreateSecret(t *testing.T) {
 
 		testSecret := getTestSecret()
 		mockResult := NewMockCommandTag(1)
-		
+
 		mockPool.On("Exec", mock.Anything, mock.AnythingOfType("string"),
 			testSecret.ID, testSecret.UserID, testSecret.Type, testSecret.Name,
 			testSecret.Metadata, testSecret.Data, testSecret.SyncHash,
@@ -411,7 +411,7 @@ func TestPostgresRepository_CreateSecret(t *testing.T) {
 
 		testSecret := getTestSecret()
 		dbError := fmt.Errorf("database error")
-		
+
 		mockPool.On("Exec", mock.Anything, mock.AnythingOfType("string"),
 			mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 			mock.Anything, mock.Anything, mock.Anything,
@@ -436,14 +436,14 @@ func TestPostgresRepository_GetSecretsByUserID(t *testing.T) {
 		testSecret1 := getTestSecret()
 		testSecret2 := getTestSecret()
 		userID := uuid.New()
-		
+
 		mockRows := &MockRows{}
 		callIndex := 0
 		mockRows.nextFunc = func() bool {
 			callIndex++
 			return callIndex <= 2 // Возвращаем true для двух итераций
 		}
-		
+
 		mockRows.scanFunc = func(dest ...interface{}) error {
 			var secret *models.Secret
 			if callIndex == 1 {
@@ -451,7 +451,7 @@ func TestPostgresRepository_GetSecretsByUserID(t *testing.T) {
 			} else {
 				secret = testSecret2
 			}
-			
+
 			if len(dest) >= 9 {
 				*(dest[0].(*uuid.UUID)) = secret.ID
 				*(dest[1].(*uuid.UUID)) = secret.UserID
@@ -465,7 +465,7 @@ func TestPostgresRepository_GetSecretsByUserID(t *testing.T) {
 			}
 			return nil
 		}
-		
+
 		mockRows.closeFunc = func() {}
 
 		mockPool.On("Query", mock.Anything, mock.AnythingOfType("string"), userID).Return(mockRows, nil)
@@ -486,7 +486,7 @@ func TestPostgresRepository_GetSecretsByUserID(t *testing.T) {
 
 		userID := uuid.New()
 		dbError := fmt.Errorf("query error")
-		
+
 		mockPool.On("Query", mock.Anything, mock.AnythingOfType("string"), userID).Return((*MockRows)(nil), dbError)
 
 		ctx := context.Background()
@@ -508,7 +508,7 @@ func TestPostgresRepository_GetSecretByID(t *testing.T) {
 
 		testSecret := getTestSecret()
 		mockRow := &MockRow{}
-		
+
 		mockRow.scanFunc = func(dest ...interface{}) error {
 			if len(dest) >= 9 {
 				*(dest[0].(*uuid.UUID)) = testSecret.ID
@@ -524,7 +524,7 @@ func TestPostgresRepository_GetSecretByID(t *testing.T) {
 			return nil
 		}
 
-		mockPool.On("QueryRow", mock.Anything, mock.AnythingOfType("string"), 
+		mockPool.On("QueryRow", mock.Anything, mock.AnythingOfType("string"),
 			testSecret.ID, testSecret.UserID).Return(mockRow)
 
 		ctx := context.Background()
@@ -549,7 +549,7 @@ func TestPostgresRepository_GetSecretByID(t *testing.T) {
 
 		secretID := uuid.New()
 		userID := uuid.New()
-		mockPool.On("QueryRow", mock.Anything, mock.AnythingOfType("string"), 
+		mockPool.On("QueryRow", mock.Anything, mock.AnythingOfType("string"),
 			secretID, userID).Return(mockRow)
 
 		ctx := context.Background()
@@ -570,7 +570,7 @@ func TestPostgresRepository_UpdateSecret(t *testing.T) {
 
 		testSecret := getTestSecret()
 		mockResult := NewMockCommandTag(1)
-		
+
 		mockPool.On("Exec", mock.Anything, mock.AnythingOfType("string"),
 			testSecret.ID, testSecret.UserID, testSecret.Name, testSecret.Metadata,
 			testSecret.Data, testSecret.SyncHash, testSecret.UpdatedAt).Return(mockResult, nil)
@@ -589,7 +589,7 @@ func TestPostgresRepository_UpdateSecret(t *testing.T) {
 
 		testSecret := getTestSecret()
 		mockResult := NewMockCommandTag(0)
-		
+
 		mockPool.On("Exec", mock.Anything, mock.AnythingOfType("string"),
 			mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 			mock.Anything, mock.Anything, mock.Anything).Return(mockResult, nil)
@@ -613,7 +613,7 @@ func TestPostgresRepository_DeleteSecret(t *testing.T) {
 		secretID := uuid.New()
 		userID := uuid.New()
 		mockResult := NewMockCommandTag(1)
-		
+
 		mockPool.On("Exec", mock.Anything, mock.AnythingOfType("string"),
 			secretID, userID).Return(mockResult, nil)
 
@@ -632,7 +632,7 @@ func TestPostgresRepository_DeleteSecret(t *testing.T) {
 		secretID := uuid.New()
 		userID := uuid.New()
 		mockResult := NewMockCommandTag(0)
-		
+
 		mockPool.On("Exec", mock.Anything, mock.AnythingOfType("string"),
 			secretID, userID).Return(mockResult, nil)
 
@@ -654,9 +654,9 @@ func TestPostgresRepository_CreateSyncOperation(t *testing.T) {
 
 		testSyncOp := getTestSyncOperation()
 		mockResult := NewMockCommandTag(1)
-		
+
 		mockPool.On("Exec", mock.Anything, mock.AnythingOfType("string"),
-			testSyncOp.ID, testSyncOp.UserID, testSyncOp.SecretID, 
+			testSyncOp.ID, testSyncOp.UserID, testSyncOp.SecretID,
 			testSyncOp.Operation, testSyncOp.Timestamp).Return(mockResult, nil)
 
 		ctx := context.Background()
@@ -673,9 +673,9 @@ func TestPostgresRepository_CreateSyncOperation(t *testing.T) {
 
 		testSyncOp := getTestSyncOperation()
 		dbError := fmt.Errorf("database error")
-		
+
 		mockPool.On("Exec", mock.Anything, mock.AnythingOfType("string"),
-			mock.Anything, mock.Anything, mock.Anything, 
+			mock.Anything, mock.Anything, mock.Anything,
 			mock.Anything, mock.Anything).Return(NewMockCommandTag(0), dbError)
 
 		ctx := context.Background()
@@ -697,14 +697,14 @@ func TestPostgresRepository_GetSyncOperationsAfter(t *testing.T) {
 		testSyncOp := getTestSyncOperation()
 		userID := uuid.New()
 		after := time.Now().Add(-time.Hour)
-		
+
 		mockRows := &MockRows{}
 		callIndex := 0
 		mockRows.nextFunc = func() bool {
 			callIndex++
 			return callIndex <= 1 // Возвращаем true для одной итерации
 		}
-		
+
 		mockRows.scanFunc = func(dest ...interface{}) error {
 			if len(dest) >= 5 {
 				*(dest[0].(*uuid.UUID)) = testSyncOp.ID
@@ -715,7 +715,7 @@ func TestPostgresRepository_GetSyncOperationsAfter(t *testing.T) {
 			}
 			return nil
 		}
-		
+
 		mockRows.closeFunc = func() {}
 
 		mockPool.On("Query", mock.Anything, mock.AnythingOfType("string"), userID, after).Return(mockRows, nil)
@@ -738,7 +738,7 @@ func TestPostgresRepository_GetSyncOperationsAfter(t *testing.T) {
 		userID := uuid.New()
 		after := time.Now().Add(-time.Hour)
 		dbError := fmt.Errorf("query error")
-		
+
 		mockPool.On("Query", mock.Anything, mock.AnythingOfType("string"), userID, after).Return((*MockRows)(nil), dbError)
 
 		ctx := context.Background()
