@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: gophkeeper-postgres
+    environment:
+      POSTGRES_DB: gophkeeper
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  server:
+    build: .
+    container_name: gophkeeper-server
+    ports:
+      - "8080:8080"
+    environment:
+      GOPHKEEPER_PORT: 8080
+      GOPHKEEPER_JWT_SECRET: "production-secret-key-change-me"
+      GOPHKEEPER_DATABASE_HOST: postgres
+      GOPHKEEPER_DATABASE_PORT: 5432
+      GOPHKEEPER_DATABASE_USER: postgres
+      GOPHKEEPER_DATABASE_PASSWORD: password
+      GOPHKEEPER_DATABASE_NAME: gophkeeper
+      GOPHKEEPER_DATABASE_SSLMODE: disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./config.yaml:/app/config.yaml
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

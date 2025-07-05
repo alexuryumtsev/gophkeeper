@@ -1,0 +1,550 @@
+basePath: /api/v1
+definitions:
+  models.LoginRequest:
+    properties:
+      password:
+        type: string
+      username:
+        type: string
+    required:
+    - password
+    - username
+    type: object
+  models.LoginResponse:
+    properties:
+      token:
+        type: string
+      user:
+        $ref: '#/definitions/models.User'
+    type: object
+  models.RegisterRequest:
+    properties:
+      email:
+        type: string
+      password:
+        minLength: 8
+        type: string
+      username:
+        maxLength: 50
+        minLength: 3
+        type: string
+    required:
+    - email
+    - password
+    - username
+    type: object
+  models.SecretRequest:
+    properties:
+      data: {}
+      metadata:
+        type: string
+      name:
+        type: string
+      type:
+        $ref: '#/definitions/models.SecretType'
+    required:
+    - data
+    - name
+    - type
+    type: object
+  models.SecretResponse:
+    properties:
+      created_at:
+        type: string
+      data: {}
+      id:
+        type: string
+      metadata:
+        type: string
+      name:
+        type: string
+      sync_hash:
+        type: string
+      type:
+        $ref: '#/definitions/models.SecretType'
+      updated_at:
+        type: string
+    type: object
+  models.SecretType:
+    enum:
+    - credentials
+    - text
+    - binary
+    - card
+    type: string
+    x-enum-varnames:
+    - SecretTypeCredentials
+    - SecretTypeText
+    - SecretTypeBinary
+    - SecretTypeCard
+  models.SecretsListResponse:
+    properties:
+      secrets:
+        items:
+          $ref: '#/definitions/models.SecretResponse'
+        type: array
+      total:
+        type: integer
+    type: object
+  models.SyncRequest:
+    properties:
+      client_hashes:
+        additionalProperties:
+          type: string
+        type: object
+      last_sync_time:
+        type: string
+    type: object
+  models.SyncResponse:
+    properties:
+      deleted_secrets:
+        items:
+          type: string
+        type: array
+      sync_time:
+        type: string
+      updated_secrets:
+        items:
+          $ref: '#/definitions/models.SecretResponse'
+        type: array
+    type: object
+  models.User:
+    properties:
+      created_at:
+        type: string
+      email:
+        type: string
+      id:
+        type: string
+      updated_at:
+        type: string
+      username:
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact:
+    email: support@swagger.io
+    name: API Support
+    url: http://www.swagger.io/support
+  description: Secure password and data manager API
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+  termsOfService: http://swagger.io/terms/
+  title: GophKeeper API
+  version: "1.0"
+paths:
+  /auth/login:
+    post:
+      consumes:
+      - application/json
+      description: Авторизует пользователя и возвращает JWT токен
+      parameters:
+      - description: Данные для авторизации
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Успешная авторизация
+          schema:
+            $ref: '#/definitions/models.LoginResponse'
+        "400":
+          description: Неверные данные запроса
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Неверные учетные данные
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Внутренняя ошибка сервера
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Авторизация пользователя
+      tags:
+      - auth
+  /auth/register:
+    post:
+      consumes:
+      - application/json
+      description: Создает нового пользователя в системе
+      parameters:
+      - description: Данные для регистрации
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.RegisterRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Успешная регистрация
+          schema:
+            $ref: '#/definitions/models.LoginResponse'
+        "400":
+          description: Неверные данные запроса
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Пользователь уже существует
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Внутренняя ошибка сервера
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Регистрация нового пользователя
+      tags:
+      - auth
+  /secrets:
+    get:
+      consumes:
+      - application/json
+      description: Возвращает список всех секретов авторизованного пользователя
+      parameters:
+      - default: Bearer <token>
+        description: Bearer токен
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Мастер-пароль для расшифровки
+        in: header
+        name: X-Master-Password
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Список секретов
+          schema:
+            $ref: '#/definitions/models.SecretsListResponse'
+        "400":
+          description: Неверные данные запроса
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Требуется авторизация
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Внутренняя ошибка сервера
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Получение списка секретов
+      tags:
+      - secrets
+    post:
+      consumes:
+      - application/json
+      description: Создает новый зашифрованный секрет для авторизованного пользователя
+      parameters:
+      - default: Bearer <token>
+        description: Bearer токен
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Мастер-пароль для шифрования
+        in: header
+        name: X-Master-Password
+        required: true
+        type: string
+      - description: Данные секрета
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.SecretRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Секрет создан
+          schema:
+            $ref: '#/definitions/models.SecretResponse'
+        "400":
+          description: Неверные данные запроса
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Требуется авторизация
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Внутренняя ошибка сервера
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Создание нового секрета
+      tags:
+      - secrets
+  /secrets/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Удаляет секрет по его ID
+      parameters:
+      - default: Bearer <token>
+        description: Bearer токен
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: ID секрета
+        format: uuid
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Секрет удален
+        "400":
+          description: Неверные данные запроса
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Требуется авторизация
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Секрет не найден
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Внутренняя ошибка сервера
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Удаление секрета
+      tags:
+      - secrets
+    get:
+      consumes:
+      - application/json
+      description: Возвращает конкретный секрет по его ID
+      parameters:
+      - default: Bearer <token>
+        description: Bearer токен
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Мастер-пароль для расшифровки
+        in: header
+        name: X-Master-Password
+        required: true
+        type: string
+      - description: ID секрета
+        format: uuid
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Данные секрета
+          schema:
+            $ref: '#/definitions/models.SecretResponse'
+        "400":
+          description: Неверные данные запроса
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Требуется авторизация
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Секрет не найден
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Внутренняя ошибка сервера
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Получение секрета по ID
+      tags:
+      - secrets
+    put:
+      consumes:
+      - application/json
+      description: Обновляет существующий секрет
+      parameters:
+      - default: Bearer <token>
+        description: Bearer токен
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Мастер-пароль для шифрования
+        in: header
+        name: X-Master-Password
+        required: true
+        type: string
+      - description: ID секрета
+        format: uuid
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Новые данные секрета
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.SecretRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Секрет обновлен
+          schema:
+            $ref: '#/definitions/models.SecretResponse'
+        "400":
+          description: Неверные данные запроса
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Требуется авторизация
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Секрет не найден
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Внутренняя ошибка сервера
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Обновление секрета
+      tags:
+      - secrets
+  /sync:
+    post:
+      consumes:
+      - application/json
+      description: Синхронизирует секреты между клиентом и сервером
+      parameters:
+      - default: Bearer <token>
+        description: Bearer токен
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Мастер-пароль для обработки данных
+        in: header
+        name: X-Master-Password
+        required: true
+        type: string
+      - description: Данные для синхронизации
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.SyncRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Результат синхронизации
+          schema:
+            $ref: '#/definitions/models.SyncResponse'
+        "400":
+          description: Неверные данные запроса
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Требуется авторизация
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Внутренняя ошибка сервера
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Синхронизация секретов
+      tags:
+      - sync
+securityDefinitions:
+  BearerAuth:
+    description: Type "Bearer" followed by a space and JWT token.
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

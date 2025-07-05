@@ -1,0 +1,22 @@
+# GophKeeper Server Configuration
+
+# Server settings
+port: 8080
+
+# JWT settings
+jwt_secret: "your-secret-key-change-in-production"
+
+# Database settings
+database:
+  host: "localhost"
+  port: 5432
+  user: "postgres"
+  password: "postgres"
+  name: "gophkeeper"
+  sslmode: "disable"
+
+# Logging settings
+logging:
+  level: "info"
+  format: "json"
+  output: "stdout"
